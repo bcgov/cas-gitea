@@ -1,0 +1,21 @@
+{{- if .Values.route.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "cas-gitea.fullname" . }}
+  labels:
+{{ include "cas-gitea.labels" . | indent 4 }}
+  annotations:
+    haproxy.router.openshift.io/balance: roundrobin
+
+spec:
+  host: {{ .Values.route.host }}
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.route.tls.termination }}
+  to:
+    kind: Service
+    name:  {{ include "cas-gitea.fullname" . }}
+    weight: 100
+  {{- end }}

@@ -1,0 +1,10 @@
+apiVersion: v2
+name: cas-gitea
+description: Gitea deployment for OpenShift using the shared cas-postgres-cluster chart
+type: application
+version: 0.0.1
+dependencies:
+  - name: cas-postgres-cluster
+    alias: cas-pg
+    version: "1.2.0"
+    repository: https://bcgov.github.io/cas-postgres/

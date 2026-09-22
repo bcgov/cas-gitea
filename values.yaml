@@ -1,0 +1,51 @@
+image: gitea/gitea:1.24.6-rootless
+imagePullPolicy: Always
+
+openshift:
+  enabled: true
+valkey:
+  enabled: false
+postgresql:
+  enabled: false
+postgresql-ha:
+  enabled: false
+persistence:
+  storageClassName: netapp-file-standard
+  size: 5Gi
+  
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1Gi
+
+cas-pg:
+  postgresCluster:
+    storageSize: 5Gi
+    postgres:
+      replicaCount: 1
+    pgbouncer:
+      replicaCount: 1
+    users:
+      - name: postgres
+        databases:
+          - gitea
+      - name: gitea
+        databases:
+          - gitea
+
+service:
+  type: ClusterIP
+  http:
+    port: 3000
+    targetPort: 3000
+  ssh:
+    port: 2222
+    targetPort: 2222
+
+route:
+  enabled: true
+  host: "cas-gitea.apps.silver.devops.gov.bc.ca"
+  tls:
+    termination: edge

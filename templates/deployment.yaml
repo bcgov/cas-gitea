@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "cas-gitea.fullname" . }}
+  labels:
+    component: gitea
+{{ include "cas-gitea.labels" . | indent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+{{ include "cas-gitea.selectorLabels" . | indent 6 }}
+      component: gitea
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+{{ include "cas-gitea.selectorLabels" . | indent 8 }}
+        component: gitea
+    spec:
+      containers:
+        - name: gitea
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command:
+            - /usr/local/bin/gitea
+          args:
+            - web
+            - --config
+            - /var/lib/gitea/custom/conf/app.ini
+          ports:
+            - name: http
+              containerPort: 3000
+            - name: ssh
+              containerPort: 2222
+          env:
+            - name: GITEA__database__DB_TYPE
+              value: postgres
+            - name: GITEA__database__HOST
+              value: {{ include "cas-gitea.postgresName" . }}-pgbouncer:5432
+            - name: GITEA__database__NAME
+              value: gitea
+            - name: GITEA__database__USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cas-gitea.postgresName" . }}-pguser-gitea
+                  key: user
+            - name: GITEA__database__PASSWD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cas-gitea.postgresName" . }}-pguser-gitea
+                  key: password
+            - name: GITEA_WORK_DIR
+              value: /var/lib/gitea
+            - name: GITEA_CUSTOM
+              value: /var/lib/gitea/custom
+            - name: GITEA__server__ROOT_URL
+              value: https://{{ .Values.route.host }}/
+            - name: GITEA__server__SSH_DOMAIN
+              value: {{ .Values.route.host }}
+            - name: GITEA__server__SSH_PORT
+              value: "2222"
+            - name: GITEA__server__SSH_LISTEN_PORT
+              value: "2222"
+          livenessProbe:
+            httpGet:
+              path: /api/healthz
+              port: http
+            initialDelaySeconds: 200
+            periodSeconds: 10
+            successThreshold: 1
+            failureThreshold: 10
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/gitea
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "cas-gitea.fullname" . }}-data
