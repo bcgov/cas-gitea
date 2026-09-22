@@ -12,7 +12,7 @@ postgresql-ha:
 persistence:
   storageClassName: netapp-file-standard
   size: 5Gi
-  
+
 resources:
   requests:
     cpu: 100m
@@ -28,9 +28,6 @@ cas-pg:
     pgbouncer:
       replicaCount: 1
     users:
-      - name: postgres
-        databases:
-          - gitea
       - name: gitea
         databases:
           - gitea

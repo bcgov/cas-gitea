@@ -38,9 +38,11 @@ spec:
             - name: GITEA__database__DB_TYPE
               value: postgres
             - name: GITEA__database__HOST
-              value: {{ include "cas-gitea.postgresName" . }}-pgbouncer:5432
+              value: {{ include "cas-gitea.postgresName" . }}-primary:5432
             - name: GITEA__database__NAME
               value: gitea
+            - name: GITEA__database__SSL_MODE
+              value: require
             - name: GITEA__database__USER
               valueFrom:
                 secretKeyRef:
