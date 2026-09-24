@@ -35,6 +35,8 @@ spec:
             - name: ssh
               containerPort: 2222
           env:
+            - name: GITEA__RUN_MODE
+              value: dev
             - name: GITEA__database__DB_TYPE
               value: postgres
             - name: GITEA__database__HOST
@@ -59,12 +61,11 @@ spec:
               value: /var/lib/gitea/custom
             - name: GITEA__server__ROOT_URL
               value: https://{{ .Values.route.host }}/
-            - name: GITEA__server__SSH_DOMAIN
-              value: {{ .Values.route.host }}
-            - name: GITEA__server__SSH_PORT
-              value: "2222"
-            - name: GITEA__server__SSH_LISTEN_PORT
-              value: "2222"
+            - name: GITEA__git__timeout__MIGRATE
+              value: "3600"
+            - name: GITEA__git__timeout__MIRROR
+              value: "900"
+
           livenessProbe:
             httpGet:
               path: /api/healthz
