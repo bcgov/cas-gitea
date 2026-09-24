@@ -4,7 +4,7 @@ imagePullPolicy: Always
 openshift:
   enabled: true
 valkey:
-  enabled: false
+  enabled: true
 postgresql:
   enabled: false
 postgresql-ha:
@@ -37,9 +37,6 @@ service:
   http:
     port: 3000
     targetPort: 3000
-  ssh:
-    port: 2222
-    targetPort: 2222
 
 route:
   enabled: true

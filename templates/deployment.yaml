@@ -12,7 +12,7 @@ spec:
 {{ include "cas-gitea.selectorLabels" . | indent 6 }}
       component: gitea
   strategy:
-    type: RollingUpdate
+    type: Recreate
   template:
     metadata:
       labels:
@@ -32,8 +32,6 @@ spec:
           ports:
             - name: http
               containerPort: 3000
-            - name: ssh
-              containerPort: 2222
           env:
             - name: GITEA__RUN_MODE
               value: dev

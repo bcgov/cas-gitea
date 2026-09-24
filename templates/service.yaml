@@ -11,10 +11,6 @@ spec:
       port: {{ .Values.service.http.port }}
       targetPort: {{ .Values.service.http.targetPort }}
       protocol: TCP
-    - name: ssh
-      port: {{ .Values.service.ssh.port }}
-      targetPort: {{ .Values.service.ssh.targetPort }}
-      protocol: TCP
   selector:
 {{ include "cas-gitea.selectorLabels" . | indent 4 }}
     component: gitea
