@@ -1,0 +1,71 @@
+{{- if .Values.mirror.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cas-gitea.fullname" . }}-mirror-init
+  labels:
+    component: gitea-mirror-init
+{{ include "cas-gitea.labels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+{{ include "cas-gitea.selectorLabels" . | indent 8 }}
+        component: gitea-mirror-init
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: create-mirrors
+          image: curlimages/curl:8.10.1
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              GITEA_URL="http://{{ include "cas-gitea.fullname" . }}:{{ .Values.service.http.port }}"
+              echo "Waiting for Gitea API"
+              for attempt in $(seq 1 30); do
+                if curl -sf -o /dev/null "$GITEA_URL/api/healthz"; then
+                  break
+                fi
+                if [ "$attempt" -eq 30 ]; then
+                  echo "Gitea API not reachable after 30 attempts" >&2
+                  exit 1
+                fi
+                sleep 10
+              done
+{{- range .Values.mirror.repos }}
+              echo "Ensuring mirror for {{ .cloneAddr }}"
+              body=$(printf '{"clone_addr":"%s","repo_name":"%s","repo_owner":"%s","mirror":true,"mirror_interval":"%s","private":false}' \
+                "{{ .cloneAddr }}" "{{ .name }}" "{{ .owner }}" "{{ $.Values.mirror.defaultInterval }}")
+              status=$(curl -s -o /tmp/response.json -w '%{http_code}' \
+                -u "$GITEA_ADMIN_USERNAME:$GITEA_ADMIN_PASSWORD" \
+                -H "Content-Type: application/json" \
+                -X POST "$GITEA_URL/api/v1/repos/migrate" \
+                -d "$body")
+              if [ "$status" = "201" ]; then
+                echo "Created mirror for {{ .name }}"
+              elif [ "$status" = "409" ]; then
+                echo "Mirror for {{ .name }} already exists"
+              else
+                echo "Failed to create mirror for {{ .name }} (HTTP $status)" >&2
+                cat /tmp/response.json >&2
+                exit 1
+              fi
+{{- end }}
+          env:
+            - name: GITEA_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.secretName }}
+                  key: {{ .Values.admin.usernameKey }}
+            - name: GITEA_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.secretName }}
+                  key: {{ .Values.admin.passwordKey }}
+{{- end }}

@@ -19,22 +19,62 @@ spec:
 {{ include "cas-gitea.selectorLabels" . | indent 8 }}
         component: gitea
     spec:
-      containers:
-        - name: gitea
+{{- if .Values.admin.enabled }}
+      initContainers:
+        - name: create-admin-user
           image: {{ .Values.image }}
           imagePullPolicy: {{ .Values.imagePullPolicy }}
           command:
-            - /usr/local/bin/gitea
-          args:
-            - web
-            - --config
-            - /var/lib/gitea/custom/conf/app.ini
-          ports:
-            - name: http
-              containerPort: 3000
+            - /bin/sh
+            - -ec
+            - |
+              echo "Using existing Gitea configuration"
+              CONF=/var/lib/gitea/custom/conf/app.ini
+              mkdir -p "$(dirname "$CONF")"
+              # app.ini here is only bootstrap config for the CLI (repos/users live in Postgres); always regenerate it to avoid stale or corrupted values
+              printf '[security]\nINSTALL_LOCK = true\n\n[database]\nDB_TYPE = %s\nHOST = %s\nNAME = %s\nUSER = %s\nPASSWD = %s\nSSL_MODE = %s\nSCHEMA = %s\n' \
+                "$GITEA__database__DB_TYPE" "$GITEA__database__HOST" "$GITEA__database__NAME" "$GITEA__database__USER" "$GITEA__database__PASSWD" "$GITEA__database__SSL_MODE" "$GITEA__database__SCHEMA" > "$CONF"
+              echo "Waiting for Gitea database migrations"
+              for attempt in $(seq 1 30); do
+                if /usr/local/bin/gitea --config /var/lib/gitea/custom/conf/app.ini migrate; then
+                  break
+                fi
+                if [ "$attempt" -eq 30 ]; then
+                  echo "Gitea database migration failed after 30 attempts" >&2
+                  exit 1
+                fi
+                echo "Gitea database is not ready; retrying in 10 seconds" >&2
+                sleep 10
+              done
+              echo "Checking for existing Gitea admin user"
+              for attempt in $(seq 1 30); do
+                if admin_users=$(/usr/local/bin/gitea --config /var/lib/gitea/custom/conf/app.ini admin user list --admin 2>&1); then
+                  if printf '%s\n' "$admin_users" | grep -F -- "$GITEA_ADMIN_USERNAME" >/dev/null; then
+                    echo "Gitea admin user already exists"
+                    exit 0
+                  fi
+                  break
+                fi
+                echo "$admin_users" >&2
+                if [ "$attempt" -eq 30 ]; then
+                  echo "Unable to query Gitea users after 30 attempts" >&2
+                  exit 1
+                fi
+                echo "Gitea users are not available; retrying in 10 seconds" >&2
+                sleep 10
+              done
+              echo "Creating Gitea admin user"
+              /usr/local/bin/gitea --config /var/lib/gitea/custom/conf/app.ini admin user create \
+                --username "$GITEA_ADMIN_USERNAME" \
+                --password "$GITEA_ADMIN_PASSWORD" \
+                --email "$GITEA_ADMIN_EMAIL" \
+                --admin \
+                --must-change-password={{ .Values.admin.mustChangePassword }}
           env:
             - name: GITEA__RUN_MODE
               value: dev
+            - name: GITEA__security__INSTALL_LOCK
+              value: {{ .Values.security.installLock | quote }}
             - name: GITEA__database__DB_TYPE
               value: postgres
             - name: GITEA__database__HOST
@@ -43,6 +83,8 @@ spec:
               value: gitea
             - name: GITEA__database__SSL_MODE
               value: require
+            - name: GITEA__database__SCHEMA
+              value: gitea
             - name: GITEA__database__USER
               valueFrom:
                 secretKeyRef:
@@ -63,6 +105,81 @@ spec:
               value: "3600"
             - name: GITEA__git__timeout__MIRROR
               value: "900"
+            - name: GITEA_ADMIN_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.secretName }}
+                  key: {{ .Values.admin.usernameKey }}
+            - name: GITEA_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.secretName }}
+                  key: {{ .Values.admin.passwordKey }}
+            - name: GITEA_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.admin.secretName }}
+                  key: {{ .Values.admin.emailKey }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/gitea
+{{- end }}
+      containers:
+        - name: gitea
+          image: {{ .Values.image }}
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command:
+            - /usr/local/bin/gitea
+          args:
+            - --config
+            - /var/lib/gitea/custom/conf/app.ini
+            - web
+          ports:
+            - name: http
+              containerPort: 3000
+          env:
+            - name: GITEA__RUN_MODE
+              value: dev
+            - name: GITEA__security__INSTALL_LOCK
+              value: {{ .Values.security.installLock | quote }}
+            - name: GITEA__database__DB_TYPE
+              value: postgres
+            - name: GITEA__database__HOST
+              value: {{ include "cas-gitea.postgresName" . }}-primary:5432
+            - name: GITEA__database__NAME
+              value: gitea
+            - name: GITEA__database__SSL_MODE
+              value: require
+            - name: GITEA__database__SCHEMA
+              value: gitea
+            - name: GITEA__database__USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cas-gitea.postgresName" . }}-pguser-gitea
+                  key: user
+            - name: GITEA__database__PASSWD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cas-gitea.postgresName" . }}-pguser-gitea
+                  key: password
+            - name: GITEA_WORK_DIR
+              value: /var/lib/gitea
+            - name: GITEA_CUSTOM
+              value: /var/lib/gitea/custom
+            - name: GITEA__server__ROOT_URL
+              value: https://{{ .Values.route.host }}/
+            - name: GITEA__git__timeout__MIGRATE
+              value: "3600"
+            - name: GITEA__git__timeout__MIRROR
+              value: "900"
+{{- if .Values.mirror.enabled }}
+            - name: GITEA__mirror__ENABLED
+              value: "true"
+            - name: GITEA__mirror__DEFAULT_INTERVAL
+              value: {{ .Values.mirror.defaultInterval | quote }}
+            - name: GITEA__mirror__MIN_INTERVAL
+              value: {{ .Values.mirror.minInterval | quote }}
+{{- end }}
 
           livenessProbe:
             httpGet:

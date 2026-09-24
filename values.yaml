@@ -1,6 +1,27 @@
 image: gitea/gitea:1.24.6-rootless
 imagePullPolicy: Always
 
+admin:
+  enabled: true
+  secretName: gitea-admin
+  usernameKey: username
+  passwordKey: password
+  emailKey: email
+  mustChangePassword: false
+
+security:
+  # Skip the web install wizard; the init container already runs migrate and creates the admin user.
+  installLock: true
+
+mirror:
+  enabled: true
+  defaultInterval: 24h
+  minInterval: 1h
+  repos:
+    - name: cas-registration
+      owner: administrator
+      cloneAddr: https://github.com/bcgov/cas-registration.git
+
 openshift:
   enabled: true
 valkey:

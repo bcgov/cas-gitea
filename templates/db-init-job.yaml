@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "cas-gitea.fullname" . }}-db-init
+  labels:
+    component: gitea-db-init
+{{ include "cas-gitea.labels" . | indent 4 }}
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+{{ include "cas-gitea.selectorLabels" . | indent 8 }}
+        component: gitea-db-init
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: create-schema
+          image: postgres:16-alpine
+          command:
+            - /bin/sh
+            - -ec
+            - |
+              echo "Waiting for PostgreSQL to accept connections"
+              for attempt in $(seq 1 30); do
+                if psql -c 'select 1' >/dev/null 2>&1; then
+                  break
+                fi
+                if [ "$attempt" -eq 30 ]; then
+                  echo "PostgreSQL not reachable after 30 attempts" >&2
+                  exit 1
+                fi
+                sleep 10
+              done
+              echo "Creating $GITEA_DB_SCHEMA schema owned by $PGUSER"
+              # gitea owns its database (and so has CREATE), but not the pre-existing public schema; owning its own schema avoids needing superuser
+              psql -v ON_ERROR_STOP=1 \
+                -c "CREATE SCHEMA IF NOT EXISTS ${GITEA_DB_SCHEMA} AUTHORIZATION ${PGUSER};"
+          env:
+            - name: PGHOST
+              value: {{ include "cas-gitea.postgresName" . }}-primary
+            - name: PGPORT
+              value: "5432"
+            - name: PGDATABASE
+              value: gitea
+            - name: PGSSLMODE
+              value: require
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cas-gitea.postgresName" . }}-pguser-gitea
+                  key: user
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "cas-gitea.postgresName" . }}-pguser-gitea
+                  key: password
+            - name: GITEA_DB_SCHEMA
+              value: gitea
