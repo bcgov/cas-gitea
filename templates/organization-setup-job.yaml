@@ -1,10 +1,9 @@
-{{- if .Values.mirror.enabled }}
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: {{ include "cas-gitea.fullname" . }}-mirror-init
+  name: {{ include "cas-gitea.fullname" . }}-setup-init
   labels:
-    component: gitea-mirror-init
+    component: gitea-setup-init
 {{ include "cas-gitea.labels" . | indent 4 }}
   annotations:
     "helm.sh/hook": post-install,post-upgrade
@@ -16,11 +15,11 @@ spec:
     metadata:
       labels:
 {{ include "cas-gitea.selectorLabels" . | indent 8 }}
-        component: gitea-mirror-init
+        component: gitea-setup-init
     spec:
       restartPolicy: Never
       containers:
-        - name: create-mirrors
+        - name: create-gitea-org-objects
           image: curlimages/curl:8.10.1
           command:
             - /bin/sh
@@ -61,6 +60,31 @@ spec:
                   exit 1
                 fi
               fi
+{{- range .Values.organization.teams }}
+              echo "Ensuring team {{ .name }} in organization {{ $.Values.organization.name }}"
+              curl -s -o /tmp/teams.json \
+                -u "$GITEA_ADMIN_USERNAME:$GITEA_ADMIN_PASSWORD" \
+                "$GITEA_URL/api/v1/orgs/{{ $.Values.organization.name }}/teams"
+              if grep -o '"name":"[^"]*"' /tmp/teams.json | grep -Fxq '"name":"{{ .name }}"'; then
+                echo "Team {{ .name }} already exists in organization {{ $.Values.organization.name }}"
+              else
+                echo "Creating team {{ .name }} in organization {{ $.Values.organization.name }}"
+                body=$(printf '{"name":"%s","can_create_org_repo":%s,"includes_all_repositories":%s,"permission":"%s"}' \
+                  "{{ .name }}" "{{ .can_create_org_repo }}" "{{ .includes_all_repositories }}" "{{ .permission }}")
+                status=$(curl -s -o /tmp/response.json -w '%{http_code}' \
+                  -u "$GITEA_ADMIN_USERNAME:$GITEA_ADMIN_PASSWORD" \
+                  -H "Content-Type: application/json" \
+                  -X POST "$GITEA_URL/api/v1/orgs/{{ $.Values.organization.name }}/teams" \
+                  -d "$body")
+                if [ "$status" = "201" ]; then
+                  echo "Created team {{ .name }} in organization {{ $.Values.organization.name }}"
+                else
+                  echo "Failed to create team {{ .name }} in organization {{ $.Values.organization.name }} (HTTP $status)" >&2
+                  cat /tmp/response.json >&2
+                  exit 1
+                fi
+              fi
+{{- end }}
 {{- range .Values.mirror.repos }}
               echo "Ensuring mirror for {{ .cloneAddr }}"
               body=$(printf '{"clone_addr":"%s","repo_name":"%s","repo_owner":"%s","mirror":true,"mirror_interval":"%s","private":false}' \
@@ -91,4 +115,3 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.admin.secretName }}
                   key: {{ .Values.admin.passwordKey }}
-{{- end }}

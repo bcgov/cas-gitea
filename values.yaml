@@ -13,6 +13,11 @@ organization:
   name: bcgov-cas
   visibility: public
   repo_admin_change_team_access: true
+  teams:
+    - name: developers
+      can_create_org_repo: true
+      includes_all_repositories: true
+      permission: admin
 
 security:
   # Skip the web install wizard; the init container already runs migrate and creates the admin user.
