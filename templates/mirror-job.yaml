@@ -38,10 +38,33 @@ spec:
                 fi
                 sleep 10
               done
+              echo "Ensuring organization {{ .Values.organization.name }}"
+              status=$(curl -s -o /tmp/response.json -w '%{http_code}' \
+                -u "$GITEA_ADMIN_USERNAME:$GITEA_ADMIN_PASSWORD" \
+                "$GITEA_URL/api/v1/orgs/{{ .Values.organization.name }}")
+              if [ "$status" = "200" ]; then
+                echo "Organization {{ .Values.organization.name }} already exists"
+              else
+                echo "Creating organization {{ .Values.organization.name }}"
+                body=$(printf '{"username":"%s","visibility":"%s","full_name":"%s","repo_admin_change_team_access":%s}' \
+                  "{{ .Values.organization.name }}" "{{ .Values.organization.visibility }}" "{{ .Values.organization.name }}" "{{ .Values.organization.repo_admin_change_team_access }}")
+                status=$(curl -s -o /tmp/response.json -w '%{http_code}' \
+                  -u "$GITEA_ADMIN_USERNAME:$GITEA_ADMIN_PASSWORD" \
+                  -H "Content-Type: application/json" \
+                  -X POST "$GITEA_URL/api/v1/admin/users/$GITEA_ADMIN_USERNAME/orgs" \
+                  -d "$body")
+                if [ "$status" = "201" ]; then
+                  echo "Created organization {{ .Values.organization.name }}"
+                else
+                  echo "Failed to create organization {{ .Values.organization.name }} (HTTP $status)" >&2
+                  cat /tmp/response.json >&2
+                  exit 1
+                fi
+              fi
 {{- range .Values.mirror.repos }}
               echo "Ensuring mirror for {{ .cloneAddr }}"
               body=$(printf '{"clone_addr":"%s","repo_name":"%s","repo_owner":"%s","mirror":true,"mirror_interval":"%s","private":false}' \
-                "{{ .cloneAddr }}" "{{ .name }}" "{{ .owner }}" "{{ $.Values.mirror.defaultInterval }}")
+                "{{ .cloneAddr }}" "{{ .name }}" "{{ $.Values.organization.name }}" "{{ $.Values.mirror.defaultInterval }}")
               status=$(curl -s -o /tmp/response.json -w '%{http_code}' \
                 -u "$GITEA_ADMIN_USERNAME:$GITEA_ADMIN_PASSWORD" \
                 -H "Content-Type: application/json" \

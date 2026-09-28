@@ -9,6 +9,11 @@ admin:
   emailKey: email
   mustChangePassword: false
 
+organization:
+  name: bcgov-cas
+  visibility: public
+  repo_admin_change_team_access: true
+
 security:
   # Skip the web install wizard; the init container already runs migrate and creates the admin user.
   installLock: true
@@ -19,7 +24,6 @@ mirror:
   minInterval: 1h
   repos:
     - name: cas-registration
-      owner: administrator
       cloneAddr: https://github.com/bcgov/cas-registration.git
 
 openshift:
